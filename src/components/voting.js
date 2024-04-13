@@ -7,6 +7,8 @@ import { createHederaClient, submitVoteToHedera } from './hedera';
 const CONTRACT_ADDRESS = '0x0bae40b835bf3fe7f61f69411dd7cd3e7ab27fe6';
 
 const Voting = () => {
+  // State variables for managing contract, account, elections, new election name, new candidate name, voter age, selected election ID,
+  // selected candidate ID, and candidates
   const [contract, setContract] = useState(null);
   const [account, setAccount] = useState(null);
   const [elections, setElections] = useState([]);
@@ -17,6 +19,7 @@ const Voting = () => {
   const [selectedCandidateId, setSelectedCandidateId] = useState('');
   const [candidates, setCandidates] = useState([]);
 
+  // Function to connect the wallet to the decentralized application
   const connectWallet = async () => {
     try {
       if (window.ethereum && window.ethereum.request) {
@@ -43,6 +46,7 @@ const Voting = () => {
     connectWallet(); // Call connectWallet directly in useEffect
   }, []); 
 
+  // Function to disconnect the wallet from the decentralized application
   const disconnectWallet = async () => {
     setContract(null);
     setAccount(null);
@@ -50,6 +54,7 @@ const Voting = () => {
     setCandidates([]);
   };
 
+  // Function to create a new election
   const createElection = async () => {
     try {
       if (!newElectionName) {
@@ -69,6 +74,7 @@ const Voting = () => {
     }
   };
 
+  // Function to fetch all elections
   const fetchElections = async () => {
     try {
       if (!contract) return;
@@ -92,6 +98,7 @@ const Voting = () => {
     }
   };
 
+  // Function to fetch candidates for a specific election
   const fetchCandidates = async (electionId) => {
     try {
       if (!contract || !electionId) return;
@@ -114,41 +121,38 @@ const Voting = () => {
     }
   };
 
+  // Use effect to update candidates when selected election ID changes
   useEffect(() => {
     const updateCandidates = async () => {
       const newCandidates = await fetchCandidates(selectedElectionId);
-      // Assuming fetchCandidates returns the updated list of candidates
       setCandidates(newCandidates);
     };
 
     if (selectedElectionId) {
       updateCandidates();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [selectedElectionId]);
 
+  // Use effect to listen for new candidate events from the contract
   useEffect(() => {
-    // Event listener for NewCandidate event
     if (contract) {
       contract.on("NewCandidate", (electionId, candidateName) => {
         console.log(`New candidate registered for election ${electionId}: ${candidateName}`);
-        // Optionally, you can trigger a fetchCandidates function here to update the candidates list
       });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contract]);
 
+  // Use effect to listen for vote events from the contract
   useEffect(() => {
-    // Event listener for Voted event
     if (contract) {
       contract.on("Voted", (electionId, candidateId) => {
         console.log(`Vote recorded for election ${electionId}, candidate ${candidateId}`);
-        // Optionally, you can update the UI to reflect the new vote count for the candidate
       });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contract]);
 
+  // Function to render active election options for selection
   const renderActiveElectionOptions = () => {
     return elections.map(election => (
       election.isActive ? (
@@ -157,49 +161,46 @@ const Voting = () => {
     ));
   };
 
- const renderCandidateOptions = () => {
-  // Check if candidates are available
-  if (!candidates || candidates.length === 0) {
-    return <option value="">No candidates available</option>;
-  }
+  // Function to render candidate options for selection
+  const renderCandidateOptions = () => {
+    if (!candidates || candidates.length === 0) {
+      return <option value="">No candidates available</option>;
+    }
 
-  return candidates.map(candidate => (
-    <option key={candidate.id} value={candidate.id}>{candidate.name}</option>
-  ));
-};
+    return candidates.map(candidate => (
+      <option key={candidate.id} value={candidate.id}>{candidate.name}</option>
+    ));
+  };
 
-
+  // Function to register a new candidate for an election
   const registerCandidate = async () => {
-  try {
-    if (!selectedElectionId || !newCandidateName || !voterAge) {
-      throw new Error('Please select an election, enter candidate name, and select age.');
+    try {
+      if (!selectedElectionId || !newCandidateName || !voterAge) {
+        throw new Error('Please select an election, enter candidate name, and select age.');
+      }
+
+      if (!contract || !account) {
+        throw new Error('Wallet not connected. Please connect your wallet first.');
+      }
+
+      const activeElection = await contract.elections(selectedElectionId);
+      if (!activeElection.isActive) {
+        throw new Error('Selected election is not active.');
+      }
+
+      await contract.registerCandidate(selectedElectionId, newCandidateName, voterAge);
+      console.log('Candidate registered successfully');
+      setNewCandidateName('');
+      setVoterAge('');
+      await fetchCandidates(selectedElectionId); // Update candidates data after registering
+      console.log('Candidates fetched successfully');
+      setSelectedCandidateId('');
+    } catch (error) {
+      console.error('Error registering candidate:', error);
     }
+  };
 
-    if (!contract || !account) {
-      throw new Error('Wallet not connected. Please connect your wallet first.');
-    }
-
-    const activeElection = await contract.elections(selectedElectionId);
-    if (!activeElection.isActive) {
-      throw new Error('Selected election is not active.');
-    }
-
-    await contract.registerCandidate(selectedElectionId, newCandidateName, voterAge);
-    console.log('Candidate registered successfully');
-    setNewCandidateName('');
-    setVoterAge('');
-    await fetchCandidates(selectedElectionId); // Update candidates data after registering
-    console.log('Candidates fetched successfully');
-
-    // Optionally, you can also reset selectedCandidateId to allow users to select the newly registered candidate immediately
-    setSelectedCandidateId('');
-
-  } catch (error) {
-    console.error('Error registering candidate:', error);
-  }
-};
-
-
+  // Function to vote to Ethereum blockchain
   const voteToEthereum = async () => {
     try {
       if (!selectedElectionId || !selectedCandidateId) {
@@ -211,13 +212,13 @@ const Voting = () => {
       }
 
       await contract.vote(selectedElectionId, selectedCandidateId);
-      // Update votes count or any relevant data
       console.log('Vote to Ethereum successful');
     } catch (error) {
       console.error('Error voting to Ethereum:', error);
     }
   };
 
+  // Function to vote to Hedera Hashgraph
   const voteToHedera = async () => {
     try {
       if (!selectedElectionId || !selectedCandidateId) {
@@ -226,71 +227,69 @@ const Voting = () => {
 
       const client = createHederaClient();
       await submitVoteToHedera(client, selectedElectionId, selectedCandidateId);
-      // Update votes count or any relevant data
       console.log('Vote to Hedera successful');
     } catch (error) {
       console.error('Error voting to Hedera:', error);
     }
   };  
 
+  // JSX to render the voting component
   return (
-<div className="container mx-auto px-4 py-8">
-  <h2 className="text-3xl font-semibold mb-4">Elections {account}</h2>
-  {!account ? (
-    <button className="button bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" onClick={connectWallet}>
-      Connect Wallet
-    </button>
-  ) : (
-    <button className="button bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" onClick={disconnectWallet}>
-      Disconnect Wallet
-    </button>
-  )}
+    <div className="container mx-auto px-4 py-8">
+      <h2 className="text-3xl font-semibold mb-4">Elections {account}</h2>
+      {!account ? (
+        <button className="button bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" onClick={connectWallet}>
+          Connect Wallet
+        </button>
+      ) : (
+        <button className="button bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" onClick={disconnectWallet}>
+          Disconnect Wallet
+        </button>
+      )}
 
-  <h3 className="text-xl font-semibold mt-8 mb-2">Create Election</h3>
-  <input className="input border rounded w-full py-2 px-3 mb-4" type="text" value={newElectionName} onChange={(e) => setNewElectionName(e.target.value)} />
-  <button className="button bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" onClick={createElection}>
-    Create Election
-  </button>
+      <h3 className="text-xl font-semibold mt-8 mb-2">Create Election</h3>
+      <input className="input border rounded w-full py-2 px-3 mb-4" type="text" value={newElectionName} onChange={(e) => setNewElectionName(e.target.value)} />
+      <button className="button bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" onClick={createElection}>
+        Create Election
+      </button>
 
-  <h3 className="text-xl font-semibold mt-8 mb-2">Register Candidate</h3>
-  <select className="select border rounded w-full py-2 px-3 mb-4" value={selectedElectionId} onChange={(e) => setSelectedElectionId(e.target.value)}>
-    <option value="">Select Election</option>
-    {renderActiveElectionOptions()}
-  </select>
-  <input className="input border rounded w-full py-2 px-3 mb-2" type="text" value={newCandidateName} onChange={(e) => setNewCandidateName(e.target.value)} placeholder="Candidate Name" />
-  <input className="input border rounded w-full py-2 px-3 mb-4" type="number" value={voterAge} onChange={(e) => setVoterAge(e.target.value)} min="18" placeholder="Voter Age" />
-  <button className="button bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" onClick={registerCandidate}>
-    Register Candidate
-  </button>
+      <h3 className="text-xl font-semibold mt-8 mb-2">Register Candidate</h3>
+      <select className="select border rounded w-full py-2 px-3 mb-4" value={selectedElectionId} onChange={(e) => setSelectedElectionId(e.target.value)}>
+        <option value="">Select Election</option>
+        {renderActiveElectionOptions()}
+      </select>
+      <input className="input border rounded w-full py-2 px-3 mb-2" type="text" value={newCandidateName} onChange={(e) => setNewCandidateName(e.target.value)} placeholder="Candidate Name" />
+      <input className="input border rounded w-full py-2 px-3 mb-4" type="number" value={voterAge} onChange={(e) => setVoterAge(e.target.value)} min="18" placeholder="Voter Age" />
+      <button className="button bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" onClick={registerCandidate}>
+        Register Candidate
+      </button>
 
-  <h3 className="text-xl font-semibold mt-8 mb-2">Vote to Ethereum</h3>
-  <select className="select border rounded w-full py-2 px-3 mb-4" value={selectedElectionId} onChange={(e) => setSelectedElectionId(e.target.value)}>
-    <option value="">Select Election</option>
-    {renderActiveElectionOptions()}
-  </select>
-  <select className="select border rounded w-full py-2 px-3 mb-2" value={selectedCandidateId} onChange={(e) => setSelectedCandidateId(e.target.value)}>
-    <option value="">Select Candidate</option>
-    {renderCandidateOptions()}
-  </select>
-  <button className="button bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" onClick={voteToEthereum}>
-    Vote
-  </button>
+      <h3 className="text-xl font-semibold mt-8 mb-2">Vote to Ethereum</h3>
+      <select className="select border rounded w-full py-2 px-3 mb-4" value={selectedElectionId} onChange={(e) => setSelectedElectionId(e.target.value)}>
+        <option value="">Select Election</option>
+        {renderActiveElectionOptions()}
+      </select>
+      <select className="select border rounded w-full py-2 px-3 mb-2" value={selectedCandidateId} onChange={(e) => setSelectedCandidateId(e.target.value)}>
+        <option value="">Select Candidate</option>
+        {renderCandidateOptions()}
+      </select>
+      <button className="button bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" onClick={voteToEthereum}>
+        Vote
+      </button>
 
-  <h3 className="text-xl font-semibold mt-8 mb-2">Vote to Hedera Hashgraph</h3>
-  <select className="select border rounded w-full py-2 px-3 mb-4" value={selectedElectionId} onChange={(e) => setSelectedElectionId(e.target.value)}>
-    <option value="">Select Election</option>
-    {renderActiveElectionOptions()}
-  </select>
-  <select className="select border rounded w-full py-2 px-3 mb-2" value={selectedCandidateId} onChange={(e) => setSelectedCandidateId(e.target.value)}>
-    <option value="">Select Candidate</option>
-    {renderCandidateOptions()}
-  </select>
-  <button className="button bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" onClick={voteToHedera}>
-    Vote
-  </button>
-</div>
-
-
+      <h3 className="text-xl font-semibold mt-8 mb-2">Vote to Hedera Hashgraph</h3>
+      <select className="select border rounded w-full py-2 px-3 mb-4" value={selectedElectionId} onChange={(e) => setSelectedElectionId(e.target.value)}>
+        <option value="">Select Election</option>
+        {renderActiveElectionOptions()}
+      </select>
+      <select className="select border rounded w-full py-2 px-3 mb-2" value={selectedCandidateId} onChange={(e) => setSelectedCandidateId(e.target.value)}>
+        <option value="">Select Candidate</option>
+        {renderCandidateOptions()}
+      </select>
+      <button className="button bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" onClick={voteToHedera}>
+        Vote
+      </button>
+    </div>
   );
 };
 
